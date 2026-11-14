@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pasar Senja: Durian Strike — a three.js tactical FPS</title>
+<style>
+  /* Look plan: dusk violet, warm amber stall light, teal guards, durian yellow. */
+  :root {
+    --dusk: #241a33;
+    --surface: #2e2620;
+    --hairline: #4a3a2c;
+    --ink: #f2ead8;
+    --muted: #a89a86;
+    --amber: #ffb347;
+    --teal: #3ec9b8;
+    --durian: #d8c93a;
+    --danger: #e5484d;
+    --radius-panel: 6px;
+    --font-ui: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-readout: ui-monospace, 'SF Mono', Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--dusk);
+    color: var(--ink);
+    font-family: var(--font-ui);
+  }
+  #game, #game canvas { position: fixed; inset: 0; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+
+  #crosshair { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%); --gap: 4px; }
+  #crosshair i { position: absolute; background: var(--ink); opacity: .9; }
+  #crosshair i:nth-child(1) { left: 10px; top: calc(0px - var(--gap)); width: 2px; height: 7px; }
+  #crosshair i:nth-child(2) { left: 10px; bottom: calc(0px - var(--gap)); width: 2px; height: 7px; }
+  #crosshair i:nth-child(3) { top: 10px; left: calc(0px - var(--gap)); height: 2px; width: 7px; }
+  #crosshair i:nth-child(4) { top: 10px; right: calc(0px - var(--gap)); height: 2px; width: 7px; }
+
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%) rotate(45deg); opacity: 0; transition: opacity 90ms linear; }
+  #hitmarker.on { opacity: 1; }
+  #hitmarker.kill i { background: var(--danger); }
+  #hitmarker i { position: absolute; background: var(--amber); }
+  #hitmarker i:nth-child(1) { left: 12px; top: 0; width: 2px; height: 8px; }
+  #hitmarker i:nth-child(2) { left: 12px; bottom: 0; width: 2px; height: 8px; }
+  #hitmarker i:nth-child(3) { top: 12px; left: 0; height: 2px; width: 8px; }
+  #hitmarker i:nth-child(4) { top: 12px; right: 0; height: 2px; width: 8px; }
+
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; transition: opacity 400ms linear; }
+
+  #topbar {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 16px;
+    font-family: var(--font-readout); font-size: 15px;
+    background: color-mix(in srgb, var(--dusk) 72%, transparent);
+    border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: 8px 16px;
+  }
+  #topbar .team-atk { color: var(--amber); }
+  #topbar .team-def { color: var(--teal); }
+  #timer { font-size: 20px; font-weight: 600; }
+  #timer.buy { color: var(--amber); }
+  #bomb-status { font-size: 12px; color: var(--muted); }
+  #bomb-status.bomb-planted { color: var(--danger); font-weight: 700; }
+  #bomb-status.bomb-carry { color: var(--durian); }
+
+  #bottom-left { position: fixed; left: 28px; bottom: 24px; display: grid; gap: 8px; }
+  #hp-bar { width: 220px; height: 12px; border: 1px solid var(--hairline); border-radius: 3px; background: var(--surface); overflow: hidden; }
+  #hp-fill { height: 100%; width: 100%; background: var(--teal); transition: width 120ms linear; }
+  #hp-fill.low { background: var(--danger); }
+  #hp-line { font-family: var(--font-readout); font-size: 14px; color: var(--muted); }
+  #hp-text { color: var(--ink); }
+  #money { font-family: var(--font-readout); font-size: 18px; color: var(--durian); }
+  #weapon-name { font-size: 14px; color: var(--muted); }
+
+  #ammo { position: fixed; right: 32px; bottom: 24px; display: flex; align-items: baseline; gap: 8px; font-family: var(--font-readout); font-size: 56px; line-height: 1; color: var(--ink); }
+  #ammo.empty #ammo-mag { color: var(--danger); }
+  #ammo-reserve { font-size: 16px; color: var(--muted); }
+
+  #prompt { position: fixed; left: 50%; bottom: 110px; transform: translateX(-50%); font-size: 15px; color: var(--amber); text-shadow: 0 1px 4px #000; }
+  #progress { position: fixed; left: 50%; bottom: 84px; transform: translateX(-50%); width: 260px; text-align: center; }
+  #progress-label { font-size: 13px; color: var(--ink); margin-bottom: 6px; text-shadow: 0 1px 4px #000; }
+  #progress-bar { height: 8px; border: 1px solid var(--hairline); border-radius: 4px; background: var(--surface); overflow: hidden; }
+  #progress-fill { height: 100%; width: 0; background: var(--durian); }
+
+  #feed { position: fixed; right: 28px; top: 76px; display: grid; gap: 6px; text-align: right; font-size: 13px; color: var(--muted); }
+  .feed-line { background: color-mix(in srgb, var(--dusk) 70%, transparent); padding: 4px 8px; border-radius: 4px; }
+
+  #round-banner { position: fixed; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; }
+  #round-banner .banner-title { font-size: 34px; font-weight: 600; letter-spacing: -0.02em; text-shadow: 0 2px 10px #000; }
+  #round-banner .banner-sub { font-size: 15px; color: var(--muted); margin-top: 6px; text-shadow: 0 1px 6px #000; }
+
+  #buy-menu {
+    position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: min(560px, 92vw);
+    background: color-mix(in srgb, var(--dusk) 92%, transparent);
+    border: 1px solid var(--hairline); border-radius: var(--radius-panel);
+    padding: 20px 24px;
+  }
+  #buy-menu[hidden] { display: none; }
+  #buy-menu h2 { margin: 0 0 4px; font-size: 20px; }
+  #buy-menu .buy-sub { margin: 0 0 14px; font-size: 13px; color: var(--muted); }
+  .buy-row { display: grid; grid-template-columns: 28px 150px 1fr 60px; gap: 10px; align-items: baseline; padding: 7px 0; border-top: 1px solid var(--hairline); font-size: 14px; }
+  .buy-key { font-family: var(--font-readout); color: var(--amber); }
+  .buy-desc { color: var(--muted); font-size: 12px; }
+  .buy-price { font-family: var(--font-readout); color: var(--durian); text-align: right; }
+
+  .overlay { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: color-mix(in srgb, var(--dusk) 86%, transparent); }
+  .overlay[hidden] { display: none; }
+  .panel { width: min(460px, 100%); padding: 32px; background: var(--surface); border: 1px solid var(--hairline); border-radius: var(--radius-panel); }
+  .panel h1 { margin: 0 0 8px; font-size: 32px; line-height: 1.15; font-weight: 500; letter-spacing: -0.02em; }
+  .panel p { margin: 0 0 24px; font-size: 16px; line-height: 1.5; color: var(--muted); }
+  #play { font: inherit; font-weight: 500; padding: 12px 16px; border: 1px solid var(--amber); border-radius: 8px; background: var(--amber); color: var(--dusk); cursor: pointer; }
+  #play:hover { background: var(--ink); border-color: var(--ink); }
+  .keys { margin: 24px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 14px; color: var(--muted); }
+  .keys li { display: flex; align-items: center; gap: 8px; }
+  .keys kbd { min-width: 24px; padding: 2px 6px; border: 1px solid var(--hairline); border-radius: 4px; font-family: var(--font-readout); font-size: 12px; color: var(--ink); text-align: center; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud" aria-hidden="true">
+  <div id="flash"></div>
+  <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+  <div id="hitmarker"><i></i><i></i><i></i><i></i></div>
+
+  <div id="topbar">
+    <span><span class="team-atk">Kru Senja <b id="score-atk">0</b></span> · <span class="team-def"><b id="score-def">0</b> Satpam</span></span>
+    <span id="timer"><span id="timer-value">0:14</span></span>
+    <span><span class="team-atk" id="alive-atk">4</span> vs <span class="team-def" id="alive-def">4</span></span>
+    <span id="bomb-status"></span>
+  </div>
+
+  <div id="bottom-left">
+    <div id="hp-bar"><div id="hp-fill"></div></div>
+    <div id="hp-line">HP <span id="hp-text">100</span></div>
+    <div id="money">$<span id="money-value">800</span></div>
+    <div id="weapon-name">Ketapel</div>
+  </div>
+  <div id="ammo"><span id="ammo-mag">12</span><span id="ammo-reserve">/ 36</span></div>
+
+  <div id="prompt"></div>
+  <div id="progress" hidden>
+    <div id="progress-label"></div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+  </div>
+
+  <div id="feed"></div>
+
+  <div id="round-banner" hidden>
+    <div class="banner-title"></div>
+    <div class="banner-sub"></div>
+  </div>
+
+  <div id="buy-menu" hidden>
+    <h2>Warung Senjata — Buy Menu</h2>
+    <p class="buy-sub">Buy phase — press a number key. Money: <span id="buy-money">$800</span>. Grenades: G throws durian, F throws chilli.</p>
+    <div id="buy-list"></div>
+  </div>
+</div>
+
+<div id="overlay" class="overlay">
+  <section class="panel" role="dialog" aria-modal="true" aria-labelledby="overlay-title">
+    <h1 id="overlay-title">Pasar Senja: Durian Strike</h1>
+    <p id="overlay-copy">A tactical FPS at the night market. Plant the durian at Gerobak Bakso or Lapak Sate — or stop the Kru Senja from doing it.</p>
+    <button id="play" type="button">Click to play</button>
+    <ul class="keys">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> Move</li>
+      <li><kbd>Mouse</kbd> Look</li>
+      <li><kbd>Click</kbd> Fire</li>
+      <li><kbd>R</kbd> Reload</li>
+      <li><kbd>Ctrl</kbd> Crouch</li>
+      <li><kbd>Space</kbd> Jump</li>
+      <li><kbd>E</kbd> Plant the durian (in a site)</li>
+      <li><kbd>G</kbd> Throw durian (frag) · <kbd>F</kbd> Throw chilli (flash)</li>
+      <li><kbd>B</kbd> Buy menu (buy phase) · <kbd>1</kbd>–<kbd>7</kbd> Buy</li>
+      <li><kbd>Right-click</kbd> Scope (Bedil Panjang)</li>
+    </ul>
+  </section>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/three.module.min.js"
+  }
+}
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
